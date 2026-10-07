@@ -113,3 +113,33 @@ added to a repository version through other operations (upload, promote, or the
 `POST /pulp/default/api/v3/repositories/maven/maven/{uuid}/repair_metadata/`
 
 Triggers a full metadata regeneration for the repository. Returns a 202 response with a task href.
+
+## Caching upstream metadata
+
+For pull-through distributions, set the `pulp_maven.metadata_cache_ttl` label on
+the Maven remote's existing `pulp_labels` field to cache upstream
+`maven-metadata.xml` files and their checksum sidecars in Redis. The value is a
+string containing a duration in seconds. For example, update the remote through
+Pulp's REST API:
+
+```http
+PATCH /pulp/api/v3/remotes/maven/maven/<remote-id>/
+Content-Type: application/json
+
+{
+  "pulp_labels": {
+    "pulp_maven.metadata_cache_ttl": "300"
+  }
+}
+```
+
+Preserve any other labels on the remote when updating `pulp_labels`. This example
+caches each successfully fetched file for five minutes. Missing, invalid, zero,
+negative, or greater-than-2147483647 values disable metadata caching. This setting
+requires no database migration.
+
+After expiration, the next request fetches a fresh copy from upstream. Cache hits
+do not extend the expiration. Updating the remote invalidates its cached entries.
+Each path expires independently, including checksum sidecars. Metadata is not
+added to repository versions. Redis failures fall back to upstream downloads,
+and files larger than 4 MiB are streamed without caching.
